@@ -1,0 +1,6 @@
+# Build image: Rust + MinGW so we can cross-compile the Windows VST3 on Linux.
+FROM rust:1-bookworm
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 pkg-config libx11-dev libx11-xcb-dev libxcursor-dev libxcb1-dev libxcb-dri2-0-dev libxcb-icccm4-dev libgl-dev \
+ && rm -rf /var/lib/apt/lists/* \
+ && rustup target add x86_64-pc-windows-gnu
