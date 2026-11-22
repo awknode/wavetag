@@ -43,7 +43,7 @@ const SAMPLE: &str = r#"
 }"#;
 #[test]
 fn factory_preset_parses() {
-    let s: nih_plug::wrapper::state::PluginState = serde_json::from_str(SAMPLE).unwrap();
+    let s: nice_plug::plugin::PluginState = serde_json::from_str(SAMPLE).unwrap();
     assert_eq!(s.params.len(), 12);
-    assert!(matches!(s.params["shape"], nih_plug::wrapper::state::ParamValue::I32(16)));
+    assert!(matches!(s.params["shape"], nice_plug::plugin::ParamValue::I32(16)));
 }

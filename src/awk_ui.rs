@@ -11,8 +11,8 @@
 
 #![allow(dead_code)]
 
-use nih_plug::prelude::*;
-use nih_plug_egui::egui::{
+use nice_plug::prelude::*;
+use egui::{
     self, pos2, text::LayoutJob, vec2, Align2, Color32, ColorImage, FontData, FontDefinitions, FontFamily, FontId, Mesh, Painter, Pos2, Rect,
     Response, Sense, Shape, Stroke, StrokeKind, TextFormat, TextureHandle, TextureOptions, Vec2,
 };
@@ -686,7 +686,7 @@ impl Skin {
     /// double-click to reset. `bip` = the value ring grows from the centre.
     #[allow(clippy::too_many_arguments)]
     pub fn knob<P: Param>(&self, ui: &mut egui::Ui, setter: &ParamSetter, c: Pos2, r: f32, label: &str, param: &P, big: bool, bip: bool, dim: bool) -> Response {
-        let id = ui.id().with(("awk-knob", label, (c.x * 4.0) as i32, (c.y * 4.0) as i32));
+        let id = ui.scope_id().with(("awk-knob", label, (c.x * 4.0) as i32, (c.y * 4.0) as i32));
         let resp = ui.interact(Rect::from_center_size(c, Vec2::splat(r * 2.0 + 14.0)), id, Sense::click_and_drag());
         knob_input(ui, setter, &resp, id, param);
         let v = param.unmodulated_normalized_value();
@@ -778,7 +778,7 @@ impl Skin {
 
     /// Small header knob (no label underneath; the caller writes it beside).
     pub fn mini_knob<P: Param>(&self, ui: &mut egui::Ui, setter: &ParamSetter, c: Pos2, r: f32, param: &P) -> Response {
-        let id = ui.id().with(("awk-mini", param.name()));
+        let id = ui.scope_id().with(("awk-mini", param.name()));
         let resp = ui.interact(Rect::from_center_size(c, Vec2::splat(r * 2.0 + 10.0)), id, Sense::click_and_drag());
         knob_input(ui, setter, &resp, id, param);
         let v = param.unmodulated_normalized_value();
@@ -814,7 +814,7 @@ impl Skin {
 
     /// Header power button bound to the bypass param (lit = plugin is ON).
     pub fn power_icon(&self, ui: &mut egui::Ui, setter: &ParamSetter, r: Rect, bypass: &BoolParam) -> Response {
-        let resp = ui.interact(r, ui.id().with("awk-bypass"), Sense::click());
+        let resp = ui.interact(r, ui.scope_id().with("awk-bypass"), Sense::click());
         let on = !bypass.value();
         if resp.clicked() {
             setter.begin_set_parameter(bypass);
@@ -850,8 +850,8 @@ impl Skin {
     // ------------------------------------------------------------ chips + buttons
 
     /// A clickable chip (tabs, mode buttons, toggles). Returns the click response.
-    pub fn chip(&self, ui: &mut egui::Ui, r: Rect, s: &str, on: bool, id: impl Hash) -> Response {
-        let resp = ui.interact(r, ui.id().with(("awk-chip", id)), Sense::click());
+    pub fn chip(&self, ui: &mut egui::Ui, r: Rect, s: &str, on: bool, id: impl Hash + std::fmt::Debug) -> Response {
+        let resp = ui.interact(r, ui.scope_id().with(("awk-chip", id)), Sense::click());
         let hot = resp.hovered();
         let p = ui.painter();
         match self.look {
@@ -896,7 +896,7 @@ impl Skin {
     /// Module power switch (Blackface: jewel LED, Hud: ON/OFF tag, Machined: slide switch).
     pub fn power(&self, ui: &mut egui::Ui, setter: &ParamSetter, r: Rect, param: &BoolParam) -> Response {
         let on = param.value();
-        let resp = ui.interact(r.expand(3.0), ui.id().with(("awk-pwr", param.name(), r.left() as i32, r.top() as i32)), Sense::click());
+        let resp = ui.interact(r.expand(3.0), ui.scope_id().with(("awk-pwr", param.name(), r.left() as i32, r.top() as i32)), Sense::click());
         if resp.clicked() {
             setter.begin_set_parameter(param);
             setter.set_parameter(param, !on);
@@ -1151,7 +1151,7 @@ fn brushed_image() -> ColorImage {
             lum[y * w + (x0 + k) % w] += d;
         }
     }
-    let mut img = ColorImage::new([w, h], Color32::BLACK);
+    let mut img = ColorImage::filled([w, h], Color32::BLACK);
     for (i, px) in img.pixels.iter_mut().enumerate() {
         let v = lum[i];
         let c = |b: f32| (b + v).clamp(0.0, 255.0) as u8;
@@ -1187,7 +1187,7 @@ pub fn knob_input<P: Param>(ui: &mut egui::Ui, setter: &ParamSetter, resp: &Resp
         setter.end_set_parameter(param);
     }
     if resp.hovered() {
-        let scroll = ui.input(|i| i.raw_scroll_delta.y);
+        let scroll = ui.input(|i| i.events.iter().map(|e| if let egui::Event::MouseWheel { delta, .. } = e { delta.y } else { 0.0 }).sum::<f32>());
         if scroll != 0.0 {
             let n = (param.unmodulated_normalized_value() + scroll.signum() * step).clamp(0.0, 1.0);
             setter.begin_set_parameter(param);

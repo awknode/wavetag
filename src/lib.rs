@@ -7,13 +7,15 @@
 //! Header MIX = dry/wet of the whole effect; power = host bypass (20 ms fade).
 //! WaveTag has no latency, so the dry path needs no delay.
 
-use nih_plug::prelude::*;
-use nih_plug_egui::EguiState;
+use nice_plug::prelude::*;
+use nice_plug_egui::EguiEditorState;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
 mod awk_ui;
+
 mod editor;
+mod nice_app;
 #[cfg(test)]
 mod shot;
 mod presets;
@@ -49,8 +51,8 @@ impl Default for Shared {
 
 #[derive(Params)]
 pub struct WaveTagParams {
-    #[persist = "editor-state-v2"]
-    pub editor_state: Arc<EguiState>,
+    /// window size (nice-plug keeps hosts in charge of it; not persisted)
+    pub editor_state: Arc<EguiEditorState>,
 
     #[id = "shape"]
     pub shape: IntParam,
@@ -95,7 +97,7 @@ pub struct WaveTagParams {
 impl Default for WaveTagParams {
     fn default() -> Self {
         Self {
-            editor_state: EguiState::from_size(editor::WIDTH, editor::HEIGHT),
+            editor_state: EguiEditorState::from_size(nice_plug::editor::dpi::LogicalSize::new((editor::WIDTH) as f64, (editor::HEIGHT) as f64), 1.0),
             shape: IntParam::new("Shape", 5, IntRange::Linear { min: 0, max: SHAPE_NAMES.len() as i32 - 1 })
                 .with_value_to_string(Arc::new(|v| SHAPE_NAMES[v.clamp(0, crate::shapes::LAST_SHAPE) as usize].to_string()))
                 .with_string_to_value(Arc::new(|s| {
@@ -219,6 +221,7 @@ impl Plugin for WaveTag {
     const MIDI_INPUT: MidiConfig = MidiConfig::Basic;
     const SAMPLE_ACCURATE_AUTOMATION: bool = true;
 
+    type Editor = crate::nice_app::AwkEditor;
     type SysExMessage = ();
     type BackgroundTask = ();
 
@@ -226,15 +229,15 @@ impl Plugin for WaveTag {
         self.params.clone()
     }
 
-    fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+    fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Self::Editor> {
         editor::create(self.params.clone(), self.shared.clone())
     }
 
-    fn initialize(
+    fn activate(
         &mut self,
         _layout: &AudioIOLayout,
         buffer_config: &BufferConfig,
-        _context: &mut impl InitContext<Self>,
+        _context: &mut impl ActivateContext<Self>,
     ) -> bool {
         self.sr = buffer_config.sample_rate;
         self.byp.set_sr(self.sr);
@@ -381,8 +384,8 @@ impl Vst3Plugin for WaveTag {
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[Vst3SubCategory::Fx, Vst3SubCategory::Modulation];
 }
 
-nih_export_clap!(WaveTag);
-nih_export_vst3!(WaveTag);
+nice_export_clap!(WaveTag);
+nice_export_vst3!(WaveTag);
 
 #[cfg(test)]
 mod tests {

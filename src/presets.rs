@@ -14,9 +14,9 @@
 //! A/B: two settings to flip between. Undo/redo: every change (Ctrl+Z / Ctrl+Shift+Z).
 
 use crate::awk_ui::*;
-use nih_plug::prelude::*;
-use nih_plug::wrapper::state::{ParamValue, PluginState};
-use nih_plug_egui::egui::{self, pos2, vec2, Align2, Color32, Id, Key, Order, Rect, Sense, Shape, Stroke, StrokeKind};
+use nice_plug::prelude::*;
+use nice_plug::plugin::{ParamValue, PluginState};
+use egui::{pos2, vec2, Align2, Color32, Id, Key, Order, Rect, Sense, Shape, Stroke, StrokeKind};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -375,7 +375,7 @@ impl PresetBar {
 
     /// Undo (left) / redo (right) curved-arrow button.
     fn icon(&self, ui: &mut egui::Ui, r: Rect, skin: &Skin, undo: bool, enabled: bool) -> bool {
-        let resp = ui.interact(r, ui.id().with(("pb-ur", undo)), Sense::click());
+        let resp = ui.interact(r, ui.scope_id().with(("pb-ur", undo)), Sense::click());
         let p = ui.painter();
         let col = if !enabled {
             skin.text_faint().gamma_multiply(0.6)
@@ -409,7 +409,7 @@ impl PresetBar {
         let prev_r = Rect::from_min_size(r.left_top(), vec2(aw, r.height()));
         let next_r = Rect::from_min_max(pos2(r.right() - aw, r.top()), r.right_bottom());
         let name_r = Rect::from_min_max(pos2(prev_r.right() + 2.0, r.top()), pos2(next_r.left() - 2.0, r.bottom()));
-        let resp = ui.interact(name_r, ui.id().with("pb-name"), Sense::click());
+        let resp = ui.interact(name_r, ui.scope_id().with("pb-name"), Sense::click());
         let hot = resp.hovered() || self.open;
         match skin.look {
             Look::Blackface => {
@@ -423,8 +423,8 @@ impl PresetBar {
             }
         }
         let arrow_col = |h: bool| if h { skin.acc } else { skin.text_dim() };
-        let pr = ui.interact(prev_r, ui.id().with("pb-prev"), Sense::click());
-        let nr = ui.interact(next_r, ui.id().with("pb-next"), Sense::click());
+        let pr = ui.interact(prev_r, ui.scope_id().with("pb-prev"), Sense::click());
+        let nr = ui.interact(next_r, ui.scope_id().with("pb-next"), Sense::click());
         let (lt, rt) = if skin.look == Look::Hud { ("◂", "▸") } else { ("‹", "›") };
         txt(&p, prev_r.center(), Align2::CENTER_CENTER, lt, if skin.look == Look::Hud { mono(13.0) } else { lab(19.0) }, arrow_col(pr.hovered()), 0.0);
         txt(&p, next_r.center(), Align2::CENTER_CENTER, rt, if skin.look == Look::Hud { mono(13.0) } else { lab(19.0) }, arrow_col(nr.hovered()), 0.0);

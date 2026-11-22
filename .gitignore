@@ -6,3 +6,6 @@ target/
 *.bak
 *.bak.*
 .cargo-ok
+/target
+/target-sym/
+*.log

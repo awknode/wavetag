@@ -2,20 +2,18 @@
 #![cfg(test)]
 #![allow(dead_code)]
 use crate::editor::{HEIGHT, WIDTH};
-use nih_plug::context::gui::GuiContext;
-use nih_plug::prelude::*;
-use nih_plug::wrapper::state::PluginState;
-use nih_plug_egui::egui::{self, epaint, Event, ImageData, Pos2, RawInput, Rect, TextureId, TextureWrapMode, Vec2};
+use nice_plug::context::gui::GuiContextInner;
+use nice_plug::prelude::*;
+use nice_plug::plugin::PluginState;
+use egui::{epaint, Event, ImageData, Pos2, RawInput, Rect, TextureId, TextureWrapMode, Vec2};
 use std::collections::HashMap;
 
 pub struct Mock;
-impl GuiContext for Mock {
+impl GuiContextInner for Mock {
     fn plugin_api(&self) -> PluginApi {
         PluginApi::Vst3
     }
-    fn request_resize(&self) -> bool {
-        true
-    }
+    fn request_restart(&self) {}
     unsafe fn raw_begin_set_parameter(&self, _p: ParamPtr) {}
     unsafe fn raw_set_parameter_normalized(&self, _p: ParamPtr, _n: f32) {}
     unsafe fn raw_end_set_parameter(&self, _p: ParamPtr) {}
@@ -31,10 +29,9 @@ pub struct Tex {
     repeat: bool,
 }
 pub fn apply_delta(texs: &mut HashMap<TextureId, Tex>, out: &egui::FullOutput) {
-    for (id, d) in &out.textures_delta.set {
+    for (id, d) in out.textures_delta.set.iter().flat_map(|(id, ds)| ds.iter().map(move |d| (id, d))) {
         let (w, h, px): (usize, usize, Vec<[f32; 4]>) = match &d.image {
             ImageData::Color(c) => (c.size[0], c.size[1], c.pixels.iter().map(|p| [p.r() as f32 / 255.0, p.g() as f32 / 255.0, p.b() as f32 / 255.0, p.a() as f32 / 255.0]).collect()),
-            ImageData::Font(f) => (f.size[0], f.size[1], f.srgba_pixels(None).map(|p| [p.r() as f32 / 255.0, p.g() as f32 / 255.0, p.b() as f32 / 255.0, p.a() as f32 / 255.0]).collect()),
         };
         let repeat = d.options.wrap_mode == TextureWrapMode::Repeat;
         if let Some(pos) = d.pos {

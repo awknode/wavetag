@@ -1,6 +1,6 @@
 [package]
 name = "wave_tag"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2021"
 authors = ["awk studios"]
 description = "Tempo-synced LFO volume shaper / tremolo"
@@ -12,8 +12,10 @@ members = ["xtask"]
 crate-type = ["cdylib"]
 
 [dependencies]
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
-nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+# AWKNODE: our nice-plug fork (~/Projects/nice-plug-awk), mounted at /nice-plug-awk by build.sh
+nice-plug = { path = "/nice-plug-awk/crates/nice-plug" }
+nice-plug-egui = { path = "/nice-plug-awk/crates/nice-plug-egui" }
+egui = { version = "0.37.0", default-features = false, features = ["bytemuck"] }
 crossbeam = "0.8"
 serde_json = "1"
 
@@ -21,7 +23,7 @@ serde_json = "1"
 lto = "thin"
 strip = "symbols"
 
-# AWKNODE: patched nih-plug (stalled-audio fallback), mounted at /nih-plug-awk by build.sh
-[patch."https://github.com/robbert-vdh/nih-plug.git"]
-nih_plug = { path = "/nih-plug-awk" }
-nih_plug_egui = { path = "/nih-plug-awk/nih_plug_egui" }
+
+# FL Studio fixes: patched baseview (vsync, paint, DPI, dummy-window crash). See nice-plug-awk/patches.
+[patch.crates-io]
+baseview = { path = "/nice-plug-awk/patches/baseview-0.4.2" }

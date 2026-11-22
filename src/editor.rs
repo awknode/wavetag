@@ -10,9 +10,9 @@
 use crate::awk_ui::*;
 use crate::presets::PresetBar;
 use crate::{shape_at, Shared, WaveTagParams, RATE_BEATS, RATE_NAMES, SHAPE_NAMES};
-use nih_plug::prelude::*;
-use nih_plug_egui::create_egui_editor;
-use nih_plug_egui::egui::{self, pos2, vec2, Align2, Color32, Pos2, Rect, Shape, Stroke};
+use nice_plug::prelude::*;
+use nice_plug_egui::create_egui_editor;
+use egui::{pos2, vec2, Align2, Color32, Pos2, Rect, Shape, Stroke};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -25,18 +25,19 @@ struct St {
     skin: Skin,
 }
 
-pub fn create(params: Arc<WaveTagParams>, shared: Arc<Shared>) -> Option<Box<dyn Editor>> {
+pub fn create(params: Arc<WaveTagParams>, shared: Arc<Shared>) -> Option<crate::nice_app::AwkEditor> {
     let state = params.editor_state.clone();
     let st = St {
         presets: PresetBar::new("WaveTag"),
         skin: Skin::new(Look::Hud, ACC, "WAVETAG", env!("CARGO_PKG_VERSION"), "LFO // TREMOLO // CHOP // HOST-SYNCED // ZERO-X CLICK-FREE"),
     };
-    create_egui_editor(
-        state,
-        st,
-        |ctx, _| install_fonts(ctx),
-        move |ctx, setter, st| frame(ctx, setter, st, &params, &shared),
-    )
+    create_egui_editor(state, nice_plug_egui::RepaintNotifier::new(), nice_plug_egui::EguiNiceSettings::default(), crate::nice_app::AwkApp::new(install_fonts, {
+        let mut __st = st;
+        Box::new(move |ctx: &mut egui::Ui, setter: &ParamSetter| {
+            let st = &mut __st;
+            frame(ctx, setter, st, &params, &shared)
+        })
+    }))
 }
 
 /// 13 classic shapes on the top row, the 8 BASS shapes below.
@@ -157,7 +158,9 @@ fn draw_wave(painter: &egui::Painter, skin: &Skin, r: Rect, p: &WaveTagParams, s
 }
 
 /// One editor frame (pulled out of the update closure so tests can render it).
-fn frame(ctx: &egui::Context, setter: &ParamSetter, st: &mut St, params: &Arc<WaveTagParams>, shared: &Arc<Shared>) {
+fn frame(root: &mut egui::Ui, setter: &ParamSetter, st: &mut St, params: &Arc<WaveTagParams>, shared: &Arc<Shared>) {
+    let ctx_owned = root.ctx().clone();
+    let ctx = &ctx_owned;
             // Animate only while something plays and the window has focus;
             // otherwise a slow 4 fps refresh (knob moves still repaint instantly).
             let focused = ctx.input(|i| i.viewport().focused).unwrap_or(true);
@@ -168,7 +171,7 @@ fn frame(ctx: &egui::Context, setter: &ParamSetter, st: &mut St, params: &Arc<Wa
             }
             st.skin.begin(ctx);
             let p = &params;
-            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(rgb(0x04, 0x07, 0x0c))).show(ctx, |ui| {
+            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(rgb(0x04, 0x07, 0x0c))).show(root, |ui| {
                 let whole = ui.max_rect();
                 st.skin.background(ui.painter(), whole);
                 let full = st.presets.strip(ui, setter, params.as_ref(), whole, &st.skin, &p.mix, &p.bypass);
@@ -244,7 +247,7 @@ mod shot_tests {
         let mut texs = HashMap::new();
         let mut out = None;
         for i in 0..4 {
-            out = Some(ctx.run(raw(i, vec![]), |c| frame(c, &setter, &mut st, &plug.params, &plug.shared)));
+            out = Some(ctx.run_ui(raw(i, vec![]), |c| frame(c, &setter, &mut st, &plug.params, &plug.shared)));
             if i < 3 { apply_delta(&mut texs, out.as_ref().unwrap()); }
         }
         render(&ctx, out.unwrap(), &mut texs, &format!("{dir}/wavetag0.rgb"));
