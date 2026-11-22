@@ -35,74 +35,7 @@ pub fn create(params: Arc<WaveTagParams>, shared: Arc<Shared>) -> Option<Box<dyn
         state,
         st,
         |ctx, _| install_fonts(ctx),
-        move |ctx, setter, st| {
-            // Animate only while something plays and the window has focus;
-            // otherwise a slow 4 fps refresh (knob moves still repaint instantly).
-            let focused = ctx.input(|i| i.viewport().focused).unwrap_or(true);
-            if focused && shared.active.load(Ordering::Relaxed) {
-                ctx.request_repaint();
-            } else {
-                ctx.request_repaint_after(std::time::Duration::from_millis(250));
-            }
-            st.skin.begin(ctx);
-            let p = &params;
-            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(rgb(0x04, 0x07, 0x0c))).show(ctx, |ui| {
-                let whole = ui.max_rect();
-                st.skin.background(ui.painter(), whole);
-                let full = st.presets.strip(ui, setter, params.as_ref(), whole, &st.skin, &p.mix, &p.bypass);
-                let painter = ui.painter().clone();
-                let skin = &mut st.skin;
-                let (l, r, t) = (full.left(), full.right(), full.top());
-                let foot = Rect::from_min_max(pos2(l, full.bottom() - 30.0), full.right_bottom());
-
-                // ---- shape chips
-                shape_chips(ui, setter, skin, Rect::from_min_max(pos2(l + 14.0, t + 12.0), pos2(r - 14.0, t + 68.0)), &p.shape);
-
-                // ---- THE WAVE
-                let meters = Rect::from_min_max(pos2(r - 88.0, t + 80.0), pos2(r - 14.0, foot.top() - 10.0));
-                let wave = Rect::from_min_max(pos2(l + 14.0, t + 80.0), pos2(meters.left() - 12.0, t + 376.0));
-                draw_wave(&painter, skin, wave, p, &shared);
-
-                // ---- WAVE knobs
-                let kp = Rect::from_min_max(pos2(wave.left(), wave.bottom() + 12.0), pos2(wave.right(), foot.top() - 10.0));
-                skin.panel(&painter, kp, "WAVE", "SEC.02");
-                let chips: [(&BoolParam, (&str, &str), f32); 3] = [
-                    (&p.sync, ("RATE: TEMPO SYNC", "RATE: FREE HZ"), 140.0),
-                    (&p.retrig, ("TRIG: MIDI NOTE", "TRIG: LOCKED TO BEAT"), 164.0),
-                    (&p.zero_x, ("ZERO-X: ON", "ZERO-X: OFF"), 104.0),
-                ];
-                let mut cx = kp.left() + 90.0;
-                for (prm, labels, w) in chips {
-                    skin.chip_param(ui, setter, Rect::from_min_size(pos2(cx, kp.top() + 6.0), vec2(w, 18.0)), prm, labels);
-                    cx += w + 8.0;
-                }
-                let sw = kp.width() / 7.0;
-                let ky = kp.top() + 78.0;
-                let kx = |i: usize| pos2(kp.left() + sw * (i as f32 + 0.5), ky);
-                if p.sync.value() {
-                    skin.knob(ui, setter, kx(0), 28.0, "RATE", &p.rate, true, false, false);
-                } else {
-                    skin.knob(ui, setter, kx(0), 28.0, "RATE HZ", &p.hz, true, false, false);
-                }
-                skin.knob(ui, setter, kx(1), 28.0, "DEPTH", &p.depth, true, false, false);
-                skin.knob(ui, setter, kx(2), 28.0, "BEND", &p.bend, true, true, false);
-                skin.knob(ui, setter, kx(3), 28.0, "SMOOTH", &p.smooth, true, false, false);
-                skin.knob(ui, setter, kx(4), 28.0, "PHASE", &p.phase, true, false, false);
-                skin.knob(ui, setter, kx(5), 28.0, "WIDTH", &p.width, true, false, false);
-                skin.knob(ui, setter, kx(6), 28.0, "OUTPUT", &p.output, true, false, false);
-
-                // ---- meters
-                skin.panel(&painter, meters, "", "");
-                let m = &shared.meters;
-                let (my, mh) = (meters.top() + 40.0, meters.height() - 64.0);
-                skin.meter(&painter, meters.left() + 10.0, my, mh, "IN", m.db(0), m.db(1), Side::Right, "in");
-                skin.meter(&painter, meters.left() + 52.0, my, mh, "OUT", m.db(2), m.db(3), Side::None, "out");
-
-                // ---- footer
-                skin.footer(&painter, foot, foot.left() + 140.0);
-                skin.safe_chip(ui, setter, Rect::from_center_size(pos2(foot.left() + 72.0, foot.center().y), vec2(112.0, 18.0)), &p.safe, shared.meters.db(4));
-            });
-        },
+        move |ctx, setter, st| frame(ctx, setter, st, &params, &shared),
     )
 }
 
@@ -221,4 +154,99 @@ fn draw_wave(painter: &egui::Painter, skin: &Skin, r: Rect, p: &WaveTagParams, s
     let span = if sync { "1 BAR" } else { "1 SECOND" };
     txt(&sp, pos2(gr, r.top() + 10.0), Align2::RIGHT_TOP, format!("{span} · TOP = FULL VOLUME · {legend}"), mono(9.0), pal.axis, 1.0);
     skin.screen_end(painter, r);
+}
+
+/// One editor frame (pulled out of the update closure so tests can render it).
+fn frame(ctx: &egui::Context, setter: &ParamSetter, st: &mut St, params: &Arc<WaveTagParams>, shared: &Arc<Shared>) {
+            // Animate only while something plays and the window has focus;
+            // otherwise a slow 4 fps refresh (knob moves still repaint instantly).
+            let focused = ctx.input(|i| i.viewport().focused).unwrap_or(true);
+            if focused && shared.active.load(Ordering::Relaxed) {
+                ctx.request_repaint();
+            } else {
+                ctx.request_repaint_after(std::time::Duration::from_millis(250));
+            }
+            st.skin.begin(ctx);
+            let p = &params;
+            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(rgb(0x04, 0x07, 0x0c))).show(ctx, |ui| {
+                let whole = ui.max_rect();
+                st.skin.background(ui.painter(), whole);
+                let full = st.presets.strip(ui, setter, params.as_ref(), whole, &st.skin, &p.mix, &p.bypass);
+                let painter = ui.painter().clone();
+                let skin = &mut st.skin;
+                let (l, r, t) = (full.left(), full.right(), full.top());
+                let foot = Rect::from_min_max(pos2(l, full.bottom() - 30.0), full.right_bottom());
+
+                // ---- shape chips
+                shape_chips(ui, setter, skin, Rect::from_min_max(pos2(l + 14.0, t + 12.0), pos2(r - 14.0, t + 68.0)), &p.shape);
+
+                // ---- THE WAVE
+                let meters = Rect::from_min_max(pos2(r - 88.0, t + 80.0), pos2(r - 14.0, foot.top() - 10.0));
+                let wave = Rect::from_min_max(pos2(l + 14.0, t + 80.0), pos2(meters.left() - 12.0, t + 376.0));
+                draw_wave(&painter, skin, wave, p, &shared);
+
+                // ---- WAVE knobs
+                let kp = Rect::from_min_max(pos2(wave.left(), wave.bottom() + 12.0), pos2(wave.right(), foot.top() - 10.0));
+                skin.panel(&painter, kp, "WAVE", "SEC.02");
+                let chips: [(&BoolParam, (&str, &str), f32); 3] = [
+                    (&p.sync, ("RATE: TEMPO SYNC", "RATE: FREE HZ"), 140.0),
+                    (&p.retrig, ("TRIG: MIDI NOTE", "TRIG: LOCKED TO BEAT"), 164.0),
+                    (&p.zero_x, ("ZERO-X: ON", "ZERO-X: OFF"), 104.0),
+                ];
+                let mut cx = kp.left() + 90.0;
+                for (prm, labels, w) in chips {
+                    skin.chip_param(ui, setter, Rect::from_min_size(pos2(cx, kp.top() + 6.0), vec2(w, 18.0)), prm, labels);
+                    cx += w + 8.0;
+                }
+                let sw = kp.width() / 7.0;
+                let ky = kp.top() + 78.0;
+                let kx = |i: usize| pos2(kp.left() + sw * (i as f32 + 0.5), ky);
+                if p.sync.value() {
+                    skin.knob(ui, setter, kx(0), 28.0, "RATE", &p.rate, true, false, false);
+                } else {
+                    skin.knob(ui, setter, kx(0), 28.0, "RATE HZ", &p.hz, true, false, false);
+                }
+                skin.knob(ui, setter, kx(1), 28.0, "DEPTH", &p.depth, true, false, false);
+                skin.knob(ui, setter, kx(2), 28.0, "BEND", &p.bend, true, true, false);
+                skin.knob(ui, setter, kx(3), 28.0, "SMOOTH", &p.smooth, true, false, false);
+                skin.knob(ui, setter, kx(4), 28.0, "PHASE", &p.phase, true, false, false);
+                skin.knob(ui, setter, kx(5), 28.0, "WIDTH", &p.width, true, false, false);
+                skin.knob(ui, setter, kx(6), 28.0, "OUTPUT", &p.output, true, false, false);
+
+                // ---- meters
+                skin.panel(&painter, meters, "", "");
+                let m = &shared.meters;
+                let (my, mh) = (meters.top() + 40.0, meters.height() - 64.0);
+                skin.meter(&painter, meters.left() + 10.0, my, mh, "IN", m.db(0), m.db(1), Side::Right, "in");
+                skin.meter(&painter, meters.left() + 52.0, my, mh, "OUT", m.db(2), m.db(3), Side::None, "out");
+
+                // ---- footer
+                skin.footer(&painter, foot, foot.left() + 140.0);
+                skin.safe_chip(ui, setter, Rect::from_center_size(pos2(foot.left() + 72.0, foot.center().y), vec2(112.0, 18.0)), &p.safe, shared.meters.db(4));
+            });
+        }
+
+#[cfg(test)]
+mod shot_tests {
+    use super::*;
+    use crate::shot::*;
+    use std::collections::HashMap;
+    /// SHOT_DIR=/src/target/shots cargo test --lib screenshots  ->  wavetag0.rgb (raw RGB, WIDTH x HEIGHT)
+    #[test]
+    fn screenshots() {
+        let Ok(dir) = std::env::var("SHOT_DIR") else { return };
+        let plug = crate::WaveTag::default();
+        let ctx = egui::Context::default();
+        install_fonts(&ctx);
+        let mock = Mock;
+        let setter = ParamSetter::new(&mock);
+        let mut st = St { presets: PresetBar::new("WaveTagShot"), skin: Skin::new(Look::Hud, ACC, "WAVETAG", env!("CARGO_PKG_VERSION"), "LFO // TREMOLO // CHOP // HOST-SYNCED // ZERO-X CLICK-FREE") };
+        let mut texs = HashMap::new();
+        let mut out = None;
+        for i in 0..4 {
+            out = Some(ctx.run(raw(i, vec![]), |c| frame(c, &setter, &mut st, &plug.params, &plug.shared)));
+            if i < 3 { apply_delta(&mut texs, out.as_ref().unwrap()); }
+        }
+        render(&ctx, out.unwrap(), &mut texs, &format!("{dir}/wavetag0.rgb"));
+    }
 }

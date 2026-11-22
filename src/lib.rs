@@ -14,6 +14,8 @@ use std::sync::Arc;
 
 mod awk_ui;
 mod editor;
+#[cfg(test)]
+mod shot;
 mod presets;
 pub mod shapes;
 pub use shapes::*;

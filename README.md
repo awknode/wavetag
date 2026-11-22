@@ -2,6 +2,8 @@
 
 **Tempo-synced LFO volume shaper and tremolo, with 21 shapes including a dubstep/riddim BASS row.**
 
+![WAVETAG](docs/images/screenshot.png)
+
 WAVETAG shapes volume in time with the beat. Pick a shape and a rate, and THE WAVE shows the real gain curve over one bar with a live playhead. It locks to FL's grid while playing, runs free in Hz mode, or retriggers on MIDI notes.
 
 ## Features
