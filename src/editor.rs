@@ -31,6 +31,7 @@ pub fn create(params: Arc<WaveTagParams>, shared: Arc<Shared>) -> Option<crate::
         presets: PresetBar::new("WaveTag"),
         skin: Skin::new(Look::Hud, ACC, "WAVETAG", env!("CARGO_PKG_VERSION"), "LFO // TREMOLO // CHOP // HOST-SYNCED // ZERO-X CLICK-FREE"),
     };
+    crate::presets::apply_scale(&state, &params.ui_scale);
     create_egui_editor(state, nice_plug_egui::RepaintNotifier::new(), nice_plug_egui::EguiNiceSettings::default(), crate::nice_app::AwkApp::new(install_fonts, {
         let mut __st = st;
         Box::new(move |ctx: &mut egui::Ui, setter: &ParamSetter| {
@@ -174,7 +175,7 @@ fn frame(root: &mut egui::Ui, setter: &ParamSetter, st: &mut St, params: &Arc<Wa
             egui::CentralPanel::default().frame(egui::Frame::NONE.fill(rgb(0x04, 0x07, 0x0c))).show(root, |ui| {
                 let whole = ui.max_rect();
                 st.skin.background(ui.painter(), whole);
-                let full = st.presets.strip(ui, setter, params.as_ref(), whole, &st.skin, &p.mix, &p.bypass);
+                let full = st.presets.strip(ui, setter, params.as_ref(), whole, &st.skin, &p.mix, &p.bypass, &p.ui_scale);
                 let painter = ui.painter().clone();
                 let skin = &mut st.skin;
                 let (l, r, t) = (full.left(), full.right(), full.top());

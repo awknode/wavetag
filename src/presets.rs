@@ -35,6 +35,17 @@ pub fn dir(plugin: &str) -> PathBuf {
     PathBuf::from(home).join("Documents").join("Awknode").join("Presets").join(plugin)
 }
 
+/// Window sizes in the SIZE dropdown. 100% is the designed (smallest) size.
+pub const SCALES: [f32; 5] = [1.0, 1.25, 1.5, 1.75, 2.0];
+/// Size a plugin opens at until that instance has its own saved size.
+pub const DEFAULT_SCALE: f32 = 1.25;
+
+/// Before the editor opens: use this instance's saved size, else the default.
+pub fn apply_scale(state: &nice_plug_egui::EguiEditorState, saved: &std::sync::RwLock<f32>) {
+    let s = saved.read().map(|v| *v).unwrap_or(0.0);
+    state.set_zoom_factor(if s > 0.0 { s } else { DEFAULT_SCALE });
+}
+
 pub struct PresetBar {
     plugin: &'static str,
     list: Vec<String>,
@@ -42,6 +53,7 @@ pub struct PresetBar {
     pub current: String,
     dirty_check: Option<Vec<f32>>,
     open: bool,
+    size_open: bool,
     naming: Option<String>,
     /// True on the frame the name box opened (so the click that opened it can't close it).
     naming_new: bool,
@@ -65,6 +77,7 @@ impl PresetBar {
             current: INIT.into(),
             dirty_check: None,
             open: false,
+            size_open: false,
             naming: None,
             naming_new: false,
             favs: Vec::new(),
@@ -275,42 +288,57 @@ impl PresetBar {
     /// Draws the header across the top of `whole` and returns the area left below
     /// it for the plugin's own UI (nothing can overlap the header).
     #[allow(clippy::too_many_arguments)]
-    pub fn strip(&mut self, ui: &mut egui::Ui, setter: &ParamSetter, params: &dyn Params, whole: Rect, skin: &Skin, mix: &FloatParam, bypass: &BoolParam) -> Rect {
+    pub fn strip(&mut self, ui: &mut egui::Ui, setter: &ParamSetter, params: &dyn Params, whole: Rect, skin: &Skin, mix: &FloatParam, bypass: &BoolParam, ui_scale: &std::sync::RwLock<f32>) -> Rect {
         let band = Rect::from_min_max(whole.left_top(), pos2(whole.right(), whole.top() + STRIP));
         let p = ui.painter().clone();
         let (l, r, cy) = (band.left(), band.right(), band.center().y);
-        // Band + brand.
-        match skin.look {
-            Look::Blackface => {
-                vgrad(&p, band, rgb(0x14, 0x14, 0x16), rgb(0x0b, 0x0b, 0x0c));
-                p.rect_filled(Rect::from_min_size(pos2(l, band.bottom() - 1.0), vec2(band.width(), 1.0)), 0.0, Color32::BLACK);
-                p.rect_filled(Rect::from_min_size(pos2(l, band.bottom()), vec2(band.width(), 1.0)), 0.0, Color32::from_white_alpha(15));
-                let br = txt(&p, pos2(l + 18.0, cy), Align2::LEFT_CENTER, "AWK STUDIOS", disp(9.0), rgb(0xbf, 0xc3, 0xc8), 2.0);
-                txt(&p, pos2(br.right() + 14.0, cy + 1.0), Align2::LEFT_CENTER, skin.name, labb(21.0), rgb(0xf2, 0xf2, 0xf2), 2.5);
-            }
-            Look::Hud => {
-                p.rect_filled(band, 0.0, Color32::from_rgba_unmultiplied(2, 6, 10, 235));
-                line(&p, pos2(l, band.bottom() - 0.5), pos2(r, band.bottom() - 0.5), al(CY, 0.5), 1.0);
-                let mut x = l;
-                let mut i = 0;
-                while x < r {
-                    line(&p, pos2(x + 0.5, band.bottom()), pos2(x + 0.5, band.bottom() - if i % 5 == 0 { 6.0 } else { 3.0 }), al(CY, 0.5), 1.0);
-                    x += 10.0;
-                    i += 1;
+        // Band + brand, drawn by a closure: measured first on a painter clipped to nothing, then
+        // drawn for real. The small AWK STUDIOS text is left out if the preset browser would get
+        // narrower than 150 px (narrow plugins at the SIZE chip's extra width).
+        let brand_right = std::cell::Cell::new(l);
+        let tx = |p: &egui::Painter, pos: egui::Pos2, a: Align2, s: &str, f: egui::FontId, c: Color32, sp: f32| -> Rect {
+            let rr = txt(p, pos, a, s, f, c, sp);
+            brand_right.set(brand_right.get().max(rr.right()));
+            rr
+        };
+        let draw_brand = |p: &egui::Painter, awk: bool| {
+            brand_right.set(l);
+            match skin.look {
+                Look::Blackface => {
+                    vgrad(&p, band, rgb(0x14, 0x14, 0x16), rgb(0x0b, 0x0b, 0x0c));
+                    p.rect_filled(Rect::from_min_size(pos2(l, band.bottom() - 1.0), vec2(band.width(), 1.0)), 0.0, Color32::BLACK);
+                    p.rect_filled(Rect::from_min_size(pos2(l, band.bottom()), vec2(band.width(), 1.0)), 0.0, Color32::from_white_alpha(15));
+                    let br = if awk { tx(p, pos2(l + 18.0, cy), Align2::LEFT_CENTER, "AWK STUDIOS", disp(9.0), rgb(0xbf, 0xc3, 0xc8), 2.0) } else { Rect::from_min_size(pos2(l + 4.0, cy), vec2(0.0, 0.0)) };
+                    tx(p, pos2(br.right() + 14.0, cy + 1.0), Align2::LEFT_CENTER, skin.name, labb(21.0), rgb(0xf2, 0xf2, 0xf2), 2.5);
                 }
-                txt(&p, pos2(l + 18.0, band.top() + 8.0), Align2::LEFT_TOP, "AWK STUDIOS", disp(8.0), CY, 3.0);
-                txt(&p, pos2(l + 18.0, band.top() + 22.0), Align2::LEFT_TOP, format!("//{}", skin.name), disp(11.0), rgb(0xf0, 0xfb, 0xff), 2.0);
+                Look::Hud => {
+                    p.rect_filled(band, 0.0, Color32::from_rgba_unmultiplied(2, 6, 10, 235));
+                    line(&p, pos2(l, band.bottom() - 0.5), pos2(r, band.bottom() - 0.5), al(CY, 0.5), 1.0);
+                    let mut x = l;
+                    let mut i = 0;
+                    while x < r {
+                        line(&p, pos2(x + 0.5, band.bottom()), pos2(x + 0.5, band.bottom() - if i % 5 == 0 { 6.0 } else { 3.0 }), al(CY, 0.5), 1.0);
+                        x += 10.0;
+                        i += 1;
+                    }
+                    if awk { tx(p, pos2(l + 18.0, band.top() + 8.0), Align2::LEFT_TOP, "AWK STUDIOS", disp(8.0), CY, 3.0); }
+                    tx(p, pos2(l + 18.0, band.top() + 22.0), Align2::LEFT_TOP, &format!("//{}", skin.name), disp(11.0), rgb(0xf0, 0xfb, 0xff), 2.0);
+                }
+                Look::Machined => {
+                    p.rect_filled(band, 0.0, rgb(0x13, 0x15, 0x18));
+                    p.rect_filled(Rect::from_min_size(pos2(l, band.bottom() - 1.0), vec2(band.width(), 1.0)), 0.0, Color32::from_white_alpha(10));
+                    let dot = pos2(l + 26.0, cy);
+                    p.circle_filled(dot, 8.0, skin.acc);
+                    p.circle_filled(dot, 3.5, rgb(0x13, 0x15, 0x18));
+                    let nr = tx(p, pos2(l + 44.0, cy + 1.0), Align2::LEFT_CENTER, skin.name, labb(21.0), rgb(0xf1, 0xf3, 0xf5), 2.0);
+                    if awk { tx(p, pos2(nr.right() + 12.0, cy + 1.0), Align2::LEFT_CENTER, "AWK STUDIOS", disp(8.0), rgb(0x6c, 0x73, 0x7c), 2.0); }
+                }
             }
-            Look::Machined => {
-                p.rect_filled(band, 0.0, rgb(0x13, 0x15, 0x18));
-                p.rect_filled(Rect::from_min_size(pos2(l, band.bottom() - 1.0), vec2(band.width(), 1.0)), 0.0, Color32::from_white_alpha(10));
-                let dot = pos2(l + 26.0, cy);
-                p.circle_filled(dot, 8.0, skin.acc);
-                p.circle_filled(dot, 3.5, rgb(0x13, 0x15, 0x18));
-                let nr = txt(&p, pos2(l + 44.0, cy + 1.0), Align2::LEFT_CENTER, skin.name, labb(21.0), rgb(0xf1, 0xf3, 0xf5), 2.0);
-                txt(&p, pos2(nr.right() + 12.0, cy + 1.0), Align2::LEFT_CENTER, "AWK STUDIOS", disp(8.0), rgb(0x6c, 0x73, 0x7c), 2.0);
-            }
-        }
+        };
+        draw_brand(&p.clone().with_clip_rect(Rect::NOTHING), true);
+        let awk = (r - 434.0 - 12.0) - (brand_right.get() + 14.0) >= 150.0;
+        draw_brand(&p, awk);
+        let brand_r = brand_right.get();
 
         // Right side, laid out from the right edge.
         let mix_c = pos2(r - 26.0, cy);
@@ -338,8 +366,53 @@ impl PresetBar {
                 self.undo(setter, params);
             }
         }
+        // SIZE: dropdown of window sizes. Saved per instance (with the project).
+        {
+            let cur = ui.ctx().zoom_factor();
+            let idx = SCALES.iter().position(|s| (s - cur).abs() < 0.01).unwrap_or(0);
+            let sr = Rect::from_min_size(pos2(r - 234.0, cy - 10.0), vec2(46.0, 20.0));
+            let resp = skin.chip(ui, sr, &format!("{:.0}%", SCALES[idx] * 100.0), self.size_open, "pb-size").on_hover_text("Window size");
+            if resp.clicked() {
+                self.size_open = !self.size_open;
+            }
+            if self.size_open {
+                let (bg, edge, hi) = match skin.look {
+                    Look::Hud => (Color32::from_rgba_unmultiplied(4, 10, 18, 250), CY, al(skin.acc, 0.28)),
+                    Look::Blackface => (rgb(0x16, 0x16, 0x18), rgb(0x45, 0x47, 0x4b), al(skin.acc, 0.3)),
+                    Look::Machined => (rgb(0x1d, 0x20, 0x24), rgb(0x3a, 0x3f, 0x46), al(skin.acc, 0.25)),
+                };
+                let mut pick = None;
+                let inner = egui::Area::new(Id::new((self.plugin, "size-list"))).order(Order::Foreground).fixed_pos(sr.left_bottom() + vec2(-14.0, 4.0)).show(ui.ctx(), |ui| {
+                    egui::Frame::NONE.fill(bg).stroke(Stroke::new(1.0_f32, edge)).inner_margin(4.0).show(ui, |ui| {
+                        txt(ui.painter(), ui.max_rect().left_top() + vec2(6.0, 9.0), Align2::LEFT_CENTER, "SIZE", mono(9.5), skin.acc, 1.5);
+                        ui.allocate_exact_size(vec2(66.0, 18.0), Sense::hover());
+                        for (i, s) in SCALES.iter().enumerate() {
+                            let (rr, rs) = ui.allocate_exact_size(vec2(66.0, 22.0), Sense::click());
+                            if i == idx {
+                                ui.painter().rect_filled(rr, 2.0, hi);
+                            } else if rs.hovered() {
+                                ui.painter().rect_filled(rr, 2.0, Color32::from_white_alpha(14));
+                            }
+                            txt(ui.painter(), rr.center(), Align2::CENTER_CENTER, &format!("{:.0}%", s * 100.0), lab(14.0), if i == idx { Color32::WHITE } else { skin.text_hi() }, 0.5);
+                            if rs.clicked() {
+                                pick = Some(*s);
+                            }
+                        }
+                    });
+                });
+                if let Some(v) = pick {
+                    self.size_open = false;
+                    if let Ok(mut w) = ui_scale.write() {
+                        *w = v;
+                    }
+                    ui.ctx().set_zoom_factor(v);
+                } else if (ui.input(|i| i.pointer.any_click()) && !inner.response.hovered() && !resp.hovered()) || ui.input(|i| i.key_pressed(Key::Escape)) {
+                    self.size_open = false;
+                }
+            }
+        }
         for (i, s) in ["A", "B"].iter().enumerate() {
-            let cr = Rect::from_min_size(pos2(r - 238.0 + i as f32 * 27.0, cy - 10.0), vec2(24.0, 20.0));
+            let cr = Rect::from_min_size(pos2(r - 294.0 + i as f32 * 27.0, cy - 10.0), vec2(24.0, 20.0));
             if skin.chip(ui, cr, s, self.ab_on == i, ("ab", i)).clicked() {
                 self.switch_ab(setter, params, i);
             }
@@ -351,7 +424,7 @@ impl PresetBar {
             }
             self.dirty_check.as_ref().map(|s| *s != snap).unwrap_or(false)
         };
-        let save_as = Rect::from_min_size(pos2(r - 324.0, cy - 10.0), vec2(72.0, 20.0));
+        let save_as = Rect::from_min_size(pos2(r - 380.0, cy - 10.0), vec2(72.0, 20.0));
         let save = Rect::from_min_size(pos2(save_as.left() - 54.0, cy - 10.0), vec2(50.0, 20.0));
         if skin.chip(ui, save, "SAVE", dirty, "pb-save").clicked() {
             if self.current == INIT {
@@ -367,7 +440,7 @@ impl PresetBar {
             self.open_naming(start);
         }
 
-        let pl = (l + 300.0).min(save.left() - 160.0);
+        let pl = (l + 300.0).min(save.left() - 160.0).max(brand_r + 14.0);
         let preset_r = Rect::from_min_max(pos2(pl, band.top() + 9.0), pos2(save.left() - 12.0, band.bottom() - 9.0));
         self.browser(ui, setter, params, preset_r, skin, dirty);
         Rect::from_min_max(pos2(whole.left(), band.bottom()), whole.right_bottom())

@@ -89,6 +89,9 @@ pub struct WaveTagParams {
     /// Header power button (host bypass).
     #[id = "bypass"]
     pub bypass: BoolParam,
+    /// Window size (1.0 = 100%), saved with the project. 0 = not set: open at the default.
+    #[persist = "ui-scale"]
+    pub ui_scale: Arc<std::sync::RwLock<f32>>,
     /// SAFE: output limiter at -0.1 dBFS (footer switch, on by default).
     #[id = "safe"]
     pub safe: BoolParam,
@@ -154,6 +157,7 @@ impl Default for WaveTagParams {
             .with_string_to_value(formatters::s2v_f32_gain_to_db()),
             mix: awk_ui::mix_param(),
             bypass: awk_ui::bypass_param(),
+            ui_scale: Arc::new(std::sync::RwLock::new(0.0)),
             safe: awk_ui::safe_param(),
         }
     }
