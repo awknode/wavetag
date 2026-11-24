@@ -66,6 +66,8 @@ pub struct PresetBar {
     hist_pos: usize,
     ab: [Option<Vec<f32>>; 2],
     ab_on: usize,
+    /// Dice button: Some(ids it leaves alone). None = no dice on this plugin.
+    dice: Option<&'static [&'static str]>,
 }
 
 impl PresetBar {
@@ -85,6 +87,7 @@ impl PresetBar {
             pending_fields: None,
             history: Vec::new(),
             hist_pos: 0,
+            dice: None,
             ab: [None, None],
             ab_on: 0,
         }
@@ -157,6 +160,60 @@ impl PresetBar {
                 }
             }
         }
+    }
+
+    /// Turn on the dice button. `keep` = parameter ids it never changes
+    /// (also matched as a suffix "_<id>" for nested groups).
+    pub fn with_dice(mut self, keep: &'static [&'static str]) -> Self {
+        self.dice = Some(keep);
+        self
+    }
+
+    /// Dice: click = new random patch, Shift+click = nudge every control a little.
+    /// Undo takes it back (the change lands in the history like any other).
+    fn roll(&mut self, ui: &egui::Ui, setter: &ParamSetter, params: &dyn Params, keep: &[&str], gentle: bool) {
+        let mut s: u64 = (ui.input(|i| i.time).to_bits() ^ 0x9E37_79B9_7F4A_7C15) | 1;
+        let mut rnd = move || {
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
+            (s >> 40) as f32 / (1u64 << 24) as f32
+        };
+        for (id, p, _) in params.param_map() {
+            if Self::is_bypass(&p) || unsafe { p.flags() }.contains(ParamFlags::HIDDEN) {
+                continue;
+            }
+            if keep.iter().any(|k| id == *k || id.ends_with(&format!("_{k}"))) {
+                continue;
+            }
+            unsafe {
+                let cur = p.unmodulated_normalized_value();
+                let mut n = if gentle { (cur + (rnd() - 0.5) * 0.3).clamp(0.0, 1.0) } else { rnd() };
+                if let Some(steps) = p.step_count() {
+                    if steps > 0 {
+                        n = (n * steps as f32).round() / steps as f32;
+                    }
+                }
+                setter.raw_context.raw_begin_set_parameter(p);
+                setter.raw_context.raw_set_parameter_normalized(p, n);
+                setter.raw_context.raw_end_set_parameter(p);
+            }
+        }
+        self.say(ui, if gentle { "NUDGED  ·  undo to go back" } else { "RANDOM  ·  undo to go back" });
+    }
+
+    /// The dice button: a rounded square with five pips.
+    fn dice_btn(&self, ui: &mut egui::Ui, r: Rect, skin: &Skin) -> egui::Response {
+        let resp = ui.interact(r, ui.scope_id().with("pb-dice"), Sense::click())
+            .on_hover_text("Random patch  (Shift+click: small nudge)");
+        let col = if resp.hovered() { skin.acc } else { skin.text_dim() };
+        let p = ui.painter();
+        let b = Rect::from_center_size(r.center(), vec2(15.0, 15.0));
+        p.rect_stroke(b, 3.0, Stroke::new(1.5_f32, col), egui::StrokeKind::Inside);
+        for (dx, dy) in [(-1.0, -1.0), (1.0, -1.0), (0.0, 0.0), (-1.0, 1.0), (1.0, 1.0)] {
+            p.circle_filled(b.center() + vec2(dx * 3.6, dy * 3.6), 1.4, col);
+        }
+        resp
     }
 
     fn say(&mut self, ui: &egui::Ui, text: impl Into<String>) {
@@ -441,7 +498,16 @@ impl PresetBar {
         }
 
         let pl = (l + 300.0).min(save.left() - 160.0).max(brand_r + 14.0);
-        let preset_r = Rect::from_min_max(pos2(pl, band.top() + 9.0), pos2(save.left() - 12.0, band.bottom() - 9.0));
+        let mut box_right = save.left() - 12.0;
+        if let Some(keep) = self.dice {
+            let dr = Rect::from_min_size(pos2(save.left() - 36.0, cy - 10.0), vec2(26.0, 20.0));
+            if self.dice_btn(ui, dr, skin).clicked() {
+                let gentle = ui.input(|i| i.modifiers.shift);
+                self.roll(ui, setter, params, keep, gentle);
+            }
+            box_right = dr.left() - 8.0;
+        }
+        let preset_r = Rect::from_min_max(pos2(pl, band.top() + 9.0), pos2(box_right, band.bottom() - 9.0));
         self.browser(ui, setter, params, preset_r, skin, dirty);
         Rect::from_min_max(pos2(whole.left(), band.bottom()), whole.right_bottom())
     }

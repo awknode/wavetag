@@ -28,7 +28,7 @@ struct St {
 pub fn create(params: Arc<WaveTagParams>, shared: Arc<Shared>) -> Option<crate::nice_app::AwkEditor> {
     let state = params.editor_state.clone();
     let st = St {
-        presets: PresetBar::new("WaveTag"),
+        presets: PresetBar::new("WaveTag").with_dice(&["output", "gmix", "safe"]),
         skin: Skin::new(Look::Hud, ACC, "WAVETAG", env!("CARGO_PKG_VERSION"), "LFO // TREMOLO // CHOP // HOST-SYNCED // ZERO-X CLICK-FREE"),
     };
     crate::presets::apply_scale(&state, &params.ui_scale);
@@ -244,7 +244,7 @@ mod shot_tests {
         install_fonts(&ctx);
         let mock = Mock;
         let setter = ParamSetter::new(&mock);
-        let mut st = St { presets: PresetBar::new("WaveTagShot"), skin: Skin::new(Look::Hud, ACC, "WAVETAG", env!("CARGO_PKG_VERSION"), "LFO // TREMOLO // CHOP // HOST-SYNCED // ZERO-X CLICK-FREE") };
+        let mut st = St { presets: PresetBar::new("WaveTagShot").with_dice(&["output", "gmix", "safe"]), skin: Skin::new(Look::Hud, ACC, "WAVETAG", env!("CARGO_PKG_VERSION"), "LFO // TREMOLO // CHOP // HOST-SYNCED // ZERO-X CLICK-FREE") };
         let mut texs = HashMap::new();
         let mut out = None;
         for i in 0..4 {
